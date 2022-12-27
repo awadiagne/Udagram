@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: 
+  "
+    AWS servers for a dummy app inside a VPC with:
+      2 private subnets with 2 servers each, 
+      1 public subnet with a load balancer and a NAT gateway
+  "
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  AMIId:
+    Description: AMI to use in the launch configuration
+    Type: String
+  
+  InstanceType:
+    Description: Instance type in the launch configuration
+    Type: String
+  
+  VolumeSize:
+    Description: Instance Volume size in the launch configuration
+    Type: String
+  JumpboxSecGroup:
+    Description: Jumpbox Security Group
+    Type: String
+
+Resources:
+  # Servers
+  AppServerSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        SourceSecurityGroupId: !Ref JumpboxSecGroup
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: 0.0.0.0/0
+  
+  AppServerLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          wget -r https://udagram-bucket-archive.s3.amazonaws.com/udagram/
+      ImageId: !Ref AMIId
+      KeyName: webAppKeyPair
+      SecurityGroups:
+      - Ref: AppServerSecGroup
+      InstanceType: !Ref InstanceType
+      BlockDeviceMappings:
+      - DeviceName: "/dev/sdk"
+        Ebs:
+          VolumeSize: !Ref VolumeSize
+      IamInstanceProfile: !Ref UdagramInstanceProfileForS3
+
+  UdagramInstanceProfileForS3:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      InstanceProfileName: udagram-instance-profile
+      Path: /
+      Roles: 
+       - !Ref UdagramInstanceRoleForS3
+
+  UdagramInstanceRoleForS3:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: udagram-instance-role-assumed
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  UdagramInstanceS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: UdagramInstanceS3Policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Action:
+              - s3:GetObject*
+            Resource:
+              - arn:aws:s3:::udagram-archive-bucket/*
+              - arn:aws:s3:::udagram-archive-bucket
+      Roles:
+        -
+          !Ref UdagramInstanceRoleForS3
+
+  AppAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+      - Fn::ImportValue: 
+          !Sub "${EnvironmentName}-PRIV-NET"
+      LaunchConfigurationName:
+        Ref: AppServerLaunchConfig
+      MinSize: '1'
+      MaxSize: '1'
+      DesiredCapacity: '1'
+      TargetGroupARNs:
+      - Ref: WebAppTargetGroup
+  
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: 
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPCID"
+
+  UdagramLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB-SUBNET1"
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB-SUBNET2"
+      SecurityGroups:
+        - Ref: UdagramLBSecGroup
+
+  UdagramLBSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP to our load balancer
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn:
+          Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: UdagramLB
+      Port: '80'
+      Protocol: HTTP
+  
+  ALBListenerRule:
+      Type: AWS::ElasticLoadBalancingV2::ListenerRule
+      Properties:
+        Actions:
+        - Type: forward
+          TargetGroupArn: !Ref 'WebAppTargetGroup'
+        Conditions:
+        - Field: path-pattern
+          Values: [/]
+        ListenerArn: !Ref 'Listener'
+        Priority: 1
+
+Outputs:
+  
+  LoadBalancerURL:
+    Description: A link towards the load balancer deployed
+    Value: !Join [ "", ["http://", !GetAtt UdagramLB.DNSName]]
+    Export:
+      Name: LoadBalancerURL
