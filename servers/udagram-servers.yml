@@ -123,9 +123,9 @@ Resources:
           !Sub "${EnvironmentName}-PRIV-NET"
       LaunchConfigurationName:
         Ref: AppServerLaunchConfig
-      MinSize: '1'
-      MaxSize: '1'
-      DesiredCapacity: '1'
+      MinSize: '4'
+      MaxSize: '4'
+      DesiredCapacity: '4'
       TargetGroupARNs:
       - Ref: WebAppTargetGroup
   
