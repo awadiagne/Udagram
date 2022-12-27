@@ -62,8 +62,8 @@ Resources:
           systemctl start apache2.service
           cd /var/www/html
           wget -r https://udagram-bucket-archive.s3.amazonaws.com/udagram/
+          echo "Udagram website is up and ready !" > index.html
       ImageId: !Ref AMIId
-      KeyName: webAppKeyPair
       SecurityGroups:
       - Ref: AppServerSecGroup
       InstanceType: !Ref InstanceType
