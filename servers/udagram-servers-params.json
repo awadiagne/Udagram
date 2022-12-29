@@ -14,9 +14,5 @@
 	{
 		"ParameterKey": "VolumeSize",
 		"ParameterValue":"10"
-	},
-	{
-		"ParameterKey": "JumpboxSecGroup",
-		"ParameterValue":"sg-038e433c446ad04ec"
 	}
 ]

@@ -4,7 +4,7 @@ Description:
   "
     AWS servers for a dummy app inside a VPC with:
       2 private subnets with 2 servers each, 
-      1 public subnet with a load balancer and a NAT gateway
+       public subnets with a load balancer and a NAT gateway
   "
 
 Parameters:
@@ -22,9 +22,6 @@ Parameters:
   
   VolumeSize:
     Description: Instance Volume size in the launch configuration
-    Type: String
-  JumpboxSecGroup:
-    Description: Jumpbox Security Group
     Type: String
 
 Resources:
@@ -61,8 +58,8 @@ Resources:
           apt-get install apache2 -y
           systemctl start apache2.service
           cd /var/www/html
-          wget -r https://udagram-bucket-archive.s3.amazonaws.com/udagram/
-          echo "Udagram website is up and ready !" > index.html
+          wget -r https://udagram-archive-bucket.s3.amazonaws.com/udagram
+          echo "It works! Udagram, Udacity!" > index.html
       ImageId: !Ref AMIId
       SecurityGroups:
       - Ref: AppServerSecGroup
@@ -84,7 +81,7 @@ Resources:
   UdagramInstanceRoleForS3:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: udagram-instance-role-assumed
+      RoleName: udagram-instance-role
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -107,7 +104,7 @@ Resources:
           -
             Effect: Allow
             Action:
-              - s3:GetObject*
+              - s3:Get*
             Resource:
               - arn:aws:s3:::udagram-archive-bucket/*
               - arn:aws:s3:::udagram-archive-bucket
@@ -194,6 +191,39 @@ Resources:
           Values: [/]
         ListenerArn: !Ref 'Listener'
         Priority: 1
+
+  Jumpbox:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: JumpboxKeyPair
+      ImageId: ami-0b5eea76982371e91
+      SecurityGroupIds:
+      - Ref: JumpboxSecGroup
+      InstanceType: t2.micro
+      SubnetId: 
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-PUB-SUBNET1"
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${EnvironmentName}-Jumpbox
+
+  JumpboxSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH from Jumpbox
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 41.82.35.214/32
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 0
+        ToPort: 65535
+        CidrIp: 0.0.0.0/0
 
 Outputs:
   

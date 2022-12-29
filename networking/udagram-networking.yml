@@ -4,7 +4,7 @@ Description:
   "
     AWS networking for a dummy app inside a VPC with:
       2 private subnets with 2 servers each, 
-      1 public subnet with a load balancer and a NAT gateway
+       public subnets with a load balancer and a NAT gateway
   "
 
 Parameters:

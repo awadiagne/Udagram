@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description:
+  "
+    AWS Udagram S3 Bucket for app archive
+  "
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+
+  S3BucketName:
+    Description: S3 Bucket Name
+    Type: String
+
+Resources:
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Ref S3BucketName
+  
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 's3:Get*'
+            Effect: Allow
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref S3Bucket
+                - /*
+            Principal:
+              AWS: arn:aws:iam::171653636382:role/udagram-instance-role
+
+Outputs:
+
+  S3BucketURL:
+    Description: A link towards the S3 Bucket containing the app archive
+    Value: !GetAtt S3Bucket.WebsiteURL
+    Export:
+      Name: S3BucketURL
